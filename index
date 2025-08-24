@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>字母拖曳填空｜小學生單字練習</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans TC", "PingFang TC", Arial, sans-serif;
+    background: #f6f7fb;
+    color: #222;
+  }
+  header {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px; gap: 12px;
+    background: #ffffffee; border-bottom: 1px solid #ebeaf3; backdrop-filter: blur(8px);
+  }
+  .brand { font-weight: 900; font-size: 18px; letter-spacing: .3px; }
+  .stats { display:flex; gap:8px; flex-wrap: wrap; }
+  .pill {
+    background:#eef1ff; border:1px solid #dfe4ff; padding:6px 10px; border-radius:999px;
+    font-size:14px; white-space: nowrap;
+  }
+  .container { max-width: 980px; margin: 10px auto 28px; padding: 0 12px 24px; }
+
+  /* 卡片 */
+  .card {
+    background:#fff; border:1px solid #ececf3; border-radius:18px; padding:14px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.02);
+  }
+  .card h2 { margin:6px 0 12px; font-size:18px; }
+  .hint { font-size:13px; color:#666; }
+
+  /* 表單（單字輸入） */
+  textarea {
+    width:100%; min-height: 160px; resize: vertical;
+    border:1px solid #dadceb; border-radius:14px; padding:12px; font-size:16px;
+  }
+  .controls { display:flex; gap:10px; flex-wrap: wrap; margin-top: 10px; }
+  button {
+    border: 1px solid #d9d9e3; background:#fff; border-radius:14px; padding:14px 18px;
+    cursor: pointer; font-weight: 800; transition: .15s ease; font-size: 16px;
+    min-height: 56px; min-width: 120px;
+  }
+  button:hover { transform: translateY(-1px); box-shadow: 0 3px 8px rgba(0,0,0,.06); }
+  button.primary { background:#5562ff; color:#fff; border-color:#5562ff; }
+  button.ghost { background:#f4f6ff; }
+
+  /* 遊戲區 */
+  .game { display:none; }
+  .topbar { display:flex; align-items:center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+  .progress { font-weight: 800; }
+  .word-area { display:grid; gap:14px; }
+  .blanks {
+    display:flex; flex-wrap: wrap; gap:10px;
+    background:#f8f9ff; border:1px dashed #dfe4ff; border-radius:16px; padding:12px;
+    min-height: 76px;
+  }
+  .blank {
+    background:#fff; border:2px dashed #bfc6ff; border-radius:12px; width:56px; height:56px;
+    display:flex; align-items:center; justify-content:center; font-size:28px; font-weight:900; color:#667;
+  }
+  .blank.filled { border-style: solid; border-color:#a9b2ff; color:#222; }
+  .blank.correct { background:#ecfff1; border-color:#29bf6b; }
+  .blank.wrong { background:#fff0f0; border-color:#ff6b6b; }
+  .letters {
+    display:grid; grid-template-columns: repeat(5, 1fr); gap:10px;
+  }
+  .tile {
+    background:#eef1ff; border:2px solid #dfe4ff; border-radius:16px; padding:18px 12px;
+    text-align:center; font-weight:900; user-select:none; cursor: grab;
+    min-height:72px; font-size:24px; letter-spacing: 1px;
+    touch-action: manipulation;
+  }
+  .tile:active { cursor: grabbing; transform: scale(.99); }
+  .tile.used { opacity:.45; cursor: not-allowed; }
+
+  .footer { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top: 6px; }
+
+  .freeze {
+    position: fixed; inset: 0; background: rgba(255,255,255,.94);
+    display: none; align-items: center; justify-content: center; flex-direction: column; gap:14px;
+    z-index: 100; padding: 20px; text-align: center;
+  }
+  .freeze.show { display:flex; }
+  .result { font-weight: 800; }
+  .best-time { font-size: 13px; color:#666; }
+
+  @media (min-width: 840px) {
+    .letters { grid-template-columns: repeat(10, 1fr); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">🎯 字母拖曳填空｜小學生單字練習</div>
+  <div class="stats">
+    <div class="pill" id="pill-round">回合 0 / 0</div>
+    <div class="pill">用時 <span id="timer">00:00</span></div>
+    <div class="pill best-time" id="best-time"></div>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- 設定區：輸入 5-10 組單字 -->
+  <section class="card setup" id="setup">
+    <h2>輸入要練習的單字（5～10 組）</h2>
+    <p class="hint">每行一個單字，建議使用英文 A–Z（會自動轉大寫並移除空白與標點）。</p>
+    <textarea id="words" placeholder="例如：
+APPLE
+ORANGE
+BANANA
+CAT
+DOG
+PANDA"></textarea>
+    <div class="controls">
+      <button class="ghost" id="btn-sample">填入示範</button>
+      <button class="primary" id="btn-start">開始遊戲</button>
+    </div>
+  </section>
+
+  <!-- 遊戲區 -->
+  <section class="card game" id="game">
+    <div class="topbar">
+      <div class="progress" id="progress">第 1 題</div>
+      <div class="result" id="round-result"></div>
+    </div>
+
+    <div class="word-area">
+      <div class="blanks" id="blanks"></div>
+      <div class="letters" id="letters"></div>
+    </div>
+
+    <div class="footer">
+      <button class="ghost" id="btn-reset-word">清空本題</button>
+      <button class="ghost" id="btn-restart">重新開始</button>
+      <button class="primary" id="btn-submit">提交本題</button>
+    </div>
+  </section>
+
+</div>
+
+<div class="freeze" id="freeze">
+  <div style="font-size:22px; font-weight:900;">✅ 已檢核答案</div>
+  <div id="freeze-msg">請花 2 秒複習正確拼字</div>
+  <button class="primary" id="btn-next">下一題</button>
+</div>
+
+<script>
+// ====== 工具 ======
+const $ = (q)=>document.querySelector(q);
+function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]];} return a; }
+function pad(n){ return n.toString().padStart(2,'0'); }
+function fmtTime(ms){ const s=Math.floor(ms/1000); const m=Math.floor(s/60), ss=s%60; return `${pad(m)}:${pad(ss)}`;}
+function vibrate(ms){ try{ if(navigator.vibrate) navigator.vibrate(ms);}catch(e){} }
+
+// ====== 狀態 ======
+let WORDS=[], current=0, answers=[], startTime=0, timerId=null, correctCount=0;
+
+// ====== 設定／開始 ======
+$('#btn-sample').addEventListener('click', ()=>{
+  $('#words').value = ['APPLE','ORANGE','BANANA','PANDA','RABBIT','MONKEY','TIGER'].join('\\n');
+});
+$('#btn-start').addEventListener('click', ()=>{
+  const raw = $('#words').value.split(/\\r?\\n/).map(s=>s.trim().toUpperCase().replace(/[^A-Z]/g,''))
+               .filter(Boolean);
+  const uniq = Array.from(new Set(raw));
+  if(uniq.length < 5 || uniq.length > 10){
+    alert('請輸入 5～10 組有效單字（只含 A–Z）。');
+    return;
+  }
+  WORDS = uniq;
+  startGame();
+});
+
+function startGame(){
+  // 初始化
+  current = 0; correctCount = 0;
+  startTime = Date.now();
+  clearInterval(timerId);
+  timerId = setInterval(()=>$('#timer').textContent = fmtTime(Date.now()-startTime), 250);
+  $('#setup').style.display = 'none';
+  $('#game').style.display = 'block';
+  $('#pill-round').textContent = `回合 1 / ${WORDS.length}`;
+  renderWord();
+}
+
+// ====== 顯示目前單字 ======
+function renderWord(){
+  $('#round-result').textContent='';
+  $('#progress').textContent = `第 ${current+1} 題`;
+  $('#pill-round').textContent = `回合 ${current+1} / ${WORDS.length}`;
+
+  const word = WORDS[current];
+  const blanks = $('#blanks'); blanks.innerHTML='';
+  const letters = $('#letters'); letters.innerHTML='';
+
+  // 建立空格
+  answers = new Array(word.length).fill('');
+  for(let i=0;i<word.length;i++){
+    const b = document.createElement('div');
+    b.className = 'blank';
+    b.dataset.idx = i;
+    // 允許拖放
+    b.addEventListener('dragover', e=>{ e.preventDefault(); });
+    b.addEventListener('drop', e=>{
+      e.preventDefault();
+      const ch = e.dataTransfer.getData('text/plain');
+      placeLetter(i, ch);
+    });
+    // 點擊回填：找第一個相同且未用的 tile
+    b.addEventListener('click', ()=>{
+      const tile = Array.from(document.querySelectorAll('.tile')).find(t=>!t.classList.contains('used'));
+      if(tile) placeLetter(i, tile.textContent);
+    });
+    blanks.appendChild(b);
+  }
+
+  // 建立字母按鈕（打亂）
+  const tiles = shuffle(word.split(''));
+  tiles.forEach((ch, idx)=>{
+    const t = document.createElement('div');
+    t.className = 'tile';
+    t.textContent = ch;
+    t.setAttribute('draggable', true);
+    t.dataset.ch = ch;
+    t.addEventListener('dragstart', e=>{
+      e.dataTransfer.setData('text/plain', ch);
+    });
+    // 點擊自動填入下一個空格
+    t.addEventListener('click', ()=>{
+      const targetIdx = answers.findIndex(x=>!x);
+      if(targetIdx === -1) return;
+      placeLetter(targetIdx, ch);
+    });
+    letters.appendChild(t);
+  });
+  updateUsedMarks();
+}
+
+function placeLetter(idx, ch){
+  const word = WORDS[current];
+  // 若該字母已用完（出現次數限制），不放
+  const needCount = word.split('').filter(c=>c===ch).length;
+  const usedCount = answers.filter(c=>c===ch).length;
+  if(usedCount >= needCount) { vibrate(10); return; }
+
+  // 放字母到空格
+  answers[idx] = ch;
+  const blank = document.querySelector(`.blank[data-idx="${idx}"]`);
+  blank.textContent = ch;
+  blank.classList.add('filled');
+  updateUsedMarks();
+  vibrate(15);
+}
+
+function updateUsedMarks(){
+  const word = WORDS[current];
+  const letters = document.querySelectorAll('.tile');
+  letters.forEach(t => {
+    const ch = t.dataset.ch;
+    const need = word.split('').filter(c=>c===ch).length;
+    const used = answers.filter(c=>c===ch).length;
+    t.classList.toggle('used', used >= need);
+  });
+}
+
+// 清空本題
+$('#btn-reset-word').addEventListener('click', ()=>{
+  const blanks = document.querySelectorAll('.blank');
+  blanks.forEach(b => { b.textContent=''; b.classList.remove('filled','correct','wrong'); });
+  const word = WORDS[current];
+  answers = new Array(word.length).fill('');
+  updateUsedMarks();
+});
+
+// 提交
+$('#btn-submit').addEventListener('click', ()=>{
+  const word = WORDS[current];
+  const filled = answers.every(Boolean);
+  if(!filled){
+    alert('還沒填完喔！');
+    return;
+  }
+  // 標記正誤
+  let correct = 0;
+  document.querySelectorAll('.blank').forEach((b, i)=>{
+    const ok = answers[i] === word[i];
+    b.classList.toggle('correct', ok);
+    b.classList.toggle('wrong', !ok);
+    if(ok) correct++;
+  });
+  $('#round-result').textContent = (correct===word.length) ? '✅ 完全正確！' : `本題正確 ${correct} / ${word.length}`;
+  vibrate(correct===word.length ? 35 : 20);
+
+  // 凍結 2 秒
+  const freeze = $('#freeze'); const btnNext = $('#btn-next');
+  btnNext.disabled = true; $('#freeze-msg').textContent = '請花 2 秒複習正確拼字';
+  freeze.classList.add('show');
+  setTimeout(()=>{
+    btnNext.disabled = false;
+    $('#freeze-msg').textContent = '可以進入下一題囉！';
+  }, 2000);
+});
+
+// 下一題
+$('#btn-next').addEventListener('click', ()=>{
+  $('#freeze').classList.remove('show');
+  const word = WORDS[current];
+  if(answers.join('') === word) correctCount++;
+  current++;
+  if(current >= WORDS.length){
+    clearInterval(timerId);
+    const used = Date.now()-startTime;
+    alert(`🎉 全部完成！\n正確 ${correctCount} / ${WORDS.length}\n用時 ${fmtTime(used)}`);
+    // 回到設定頁
+    $('#game').style.display = 'none';
+    $('#setup').style.display = 'block';
+    $('#round-result').textContent='';
+    $('#pill-round').textContent = `回合 0 / 0`;
+    $('#timer').textContent = '00:00';
+  }else{
+    renderWord();
+  }
+});
+
+// 重新開始（保留單字清單）
+$('#btn-restart').addEventListener('click', ()=>{
+  startGame();
+});
+</script>
+</body>
+</html>

@@ -90,6 +90,14 @@
   .result { font-weight: 800; }
   .best-time { font-size: 13px; color:#666; }
 
+  .word-zh {
+    font-size: 18px;
+    color: #5562ff;
+    font-weight: bold;
+    margin-bottom: 8px;
+    margin-left: 2px;
+  }
+
   @media (min-width: 840px) {
     .letters { grid-template-columns: repeat(10, 1fr); }
   }
@@ -110,14 +118,13 @@
   <!-- 設定區：輸入 5-10 組單字 -->
   <section class="card setup" id="setup">
     <h2>輸入要練習的單字（5～10 組）</h2>
-    <p class="hint">每行一個單字，可用半形/全形英文，會自動轉大寫並正規化（只要含英文即可，重複也可）。</p>
+    <p class="hint">每行格式：英文/中文，例如 hot/很熱<br>可用半形/全形英文，會自動轉大寫與正規化。</p>
     <textarea id="words" placeholder="例如：
-APPLE
-ＯＲＡＮＧＥ
-banana
-c@t!
-DOG
-ＰＡＮＤＡ"></textarea>
+hot/很熱
+windy/有風
+rain/下雨
+apple/蘋果
+cat/貓"></textarea>
     <div class="controls">
       <button class="ghost" id="btn-sample">填入示範</button>
       <span id="count-msg" style="margin-left:8px;color:#5562ff;font-weight:bold;"></span>
@@ -134,6 +141,7 @@ DOG
     </div>
 
     <div class="word-area">
+      <div class="word-zh" id="word-zh"></div>
       <div class="blanks" id="blanks"></div>
       <div class="letters" id="letters"></div>
     </div>
@@ -162,13 +170,13 @@ function fmtTime(ms){ const s=Math.floor(ms/1000); const m=Math.floor(s/60), ss=
 function vibrate(ms){ try{ if(navigator.vibrate) navigator.vibrate(ms);}catch(e){} }
 
 // ====== 狀態 ======
+// WORDS: [{en: 'HOT', zh: '很熱'}]
 let WORDS=[], current=0, answers=[], startTime=0, timerId=null, correctCount=0;
 
 // ====== 全形轉半形 + 正規化 ======
 function toFullWidthUpper(str) {
-  // 全形轉半形 + 只留 A-Z
-  // 先把全形字母轉半形，再過濾非英文字母，最後轉大寫
-  return str.replace(/[\uFF21-\uFF3A\uFF41-\uFF5A]/g, ch =>
+  return str.replace(/[
+\uFF21-\uFF3A\uFF41-\uFF5A]/g, ch =>
     String.fromCharCode(ch.charCodeAt(0) - 0xFEE0)
   ).replace(/[^A-Za-z]/g, '')
    .toUpperCase();
@@ -180,10 +188,19 @@ function validateWordsInput() {
   let valid = [];
   let invalidIdxs = [];
   lines.forEach((raw, i) => {
-    // 把全形轉半形、只取英文字母
-    const cleaned = toFullWidthUpper(raw);
-    if (/[A-Z]/.test(cleaned)) valid.push(cleaned);
-    else if(raw.trim()!=='') invalidIdxs.push(i+1); // 有內容但沒英文字母
+    if (raw.trim() === '') return;
+    const [enRaw, zhRaw] = raw.split('/');
+    if (!enRaw || !zhRaw) {
+      invalidIdxs.push(i+1);
+      return;
+    }
+    const en = toFullWidthUpper(enRaw);
+    const zh = zhRaw.trim();
+    if (/[A-Z]/.test(en) && zh.length > 0) {
+      valid.push({en, zh});
+    } else {
+      invalidIdxs.push(i+1);
+    }
   });
   $('#count-msg').textContent = `有效單字數：${valid.length}`;
   if (valid.length < 5 || valid.length > 10) {
@@ -192,28 +209,33 @@ function validateWordsInput() {
     $('#count-msg').style.color = "#5562ff";
   }
   if (invalidIdxs.length > 0) {
-    $('#invalid-lines').textContent = `第 ${invalidIdxs.join(', ')} 行無有效英文字母`;
+    $('#invalid-lines').textContent = `第 ${invalidIdxs.join(', ')} 行格式錯誤（正確格式：英文/中文）`;
   } else {
     $('#invalid-lines').textContent = '';
   }
-  // 回傳 valid array
   return {valid, invalidIdxs};
 }
 $('#words').addEventListener('input', validateWordsInput);
 
 // ====== 設定／開始 ======
 $('#btn-sample').addEventListener('click', ()=>{
-  $('#words').value = ['APPLE','ＯＲＡＮＧＥ','banana','c@t!','DOG','ＰＡＮＤＡ'].join('\n');
+  $('#words').value = [
+    'hot/很熱',
+    'windy/有風',
+    'rain/下雨',
+    'apple/蘋果',
+    'cat/貓'
+  ].join('\n');
   validateWordsInput();
 });
 $('#btn-start').addEventListener('click', ()=>{
   const {valid, invalidIdxs} = validateWordsInput();
   if(valid.length < 5 || valid.length > 10){
-    alert('請輸入 5～10 組有效單字（只含英文字母，大小寫/全形皆可，會自動正規化）。');
+    alert('請輸入 5～10 組有效單字（格式：英文/中文）。');
     return;
   }
   if(invalidIdxs.length > 0){
-    alert('部份行無有效英文字母，請檢查：第 ' + invalidIdxs.join(', ') + ' 行');
+    alert('有格式錯誤，請檢查：第 ' + invalidIdxs.join(', ') + ' 行');
     return;
   }
   WORDS = valid;
@@ -221,7 +243,6 @@ $('#btn-start').addEventListener('click', ()=>{
 });
 
 function startGame(){
-  // 初始化
   current = 0; correctCount = 0;
   startTime = Date.now();
   clearInterval(timerId);
@@ -238,16 +259,23 @@ function renderWord(){
   $('#progress').textContent = `第 ${current+1} 題`;
   $('#pill-round').textContent = `回合 ${current+1} / ${WORDS.length}`;
 
-  const word = WORDS[current];
+  const wordObj = WORDS[current];
+  const word = wordObj.en;
   const blanks = $('#blanks'); blanks.innerHTML='';
   const letters = $('#letters'); letters.innerHTML='';
+  $('#word-zh').textContent = wordObj.zh;
 
-  // 建立空格
+  // 建立空格（第一個字母先顯示）
   answers = new Array(word.length).fill('');
   for(let i=0;i<word.length;i++){
     const b = document.createElement('div');
     b.className = 'blank';
     b.dataset.idx = i;
+    if(i === 0){
+      b.textContent = word[0];
+      answers[0] = word[0];
+      b.classList.add('filled');
+    }
     // 允許拖放
     b.addEventListener('dragover', e=>{ e.preventDefault(); });
     b.addEventListener('drop', e=>{
@@ -263,9 +291,10 @@ function renderWord(){
     blanks.appendChild(b);
   }
 
-  // 建立字母按鈕（打亂）
-  const tiles = shuffle(word.split(''));
-  tiles.forEach((ch, idx)=>{
+  // 建立字母按鈕（打亂，去掉第一個字母）
+  let tileLetters = word.slice(1).split('');
+  tileLetters = shuffle(tileLetters);
+  tileLetters.forEach((ch, idx)=>{
     const t = document.createElement('div');
     t.className = 'tile';
     t.textContent = ch;
@@ -276,7 +305,7 @@ function renderWord(){
     });
     // 點擊自動填入下一個空格
     t.addEventListener('click', ()=>{
-      const targetIdx = answers.findIndex(x=>!x);
+      const targetIdx = answers.findIndex((x, i)=>!x && i!==0);
       if(targetIdx === -1) return;
       placeLetter(targetIdx, ch);
     });
@@ -286,10 +315,12 @@ function renderWord(){
 }
 
 function placeLetter(idx, ch){
-  const word = WORDS[current];
+  const word = WORDS[current].en;
+  // 不允許覆蓋第一格
+  if(idx === 0) return;
   // 若該字母已用完（出現次數限制），不放
-  const needCount = word.split('').filter(c=>c===ch).length;
-  const usedCount = answers.filter(c=>c===ch).length;
+  const needCount = word.split('').slice(1).filter(c=>c===ch).length;
+  const usedCount = answers.slice(1).filter(c=>c===ch).length;
   if(usedCount >= needCount) { vibrate(10); return; }
 
   // 放字母到空格
@@ -302,12 +333,12 @@ function placeLetter(idx, ch){
 }
 
 function updateUsedMarks(){
-  const word = WORDS[current];
+  const word = WORDS[current].en;
   const letters = document.querySelectorAll('.tile');
   letters.forEach(t => {
     const ch = t.dataset.ch;
-    const need = word.split('').filter(c=>c===ch).length;
-    const used = answers.filter(c=>c===ch).length;
+    const need = word.split('').slice(1).filter(c=>c===ch).length;
+    const used = answers.slice(1).filter(c=>c===ch).length;
     t.classList.toggle('used', used >= need);
   });
 }
@@ -315,15 +346,23 @@ function updateUsedMarks(){
 // 清空本題
 $('#btn-reset-word').addEventListener('click', ()=>{
   const blanks = document.querySelectorAll('.blank');
-  blanks.forEach(b => { b.textContent=''; b.classList.remove('filled','correct','wrong'); });
-  const word = WORDS[current];
-  answers = new Array(word.length).fill('');
+  blanks.forEach((b, i) => {
+    if(i === 0) {
+      b.textContent = WORDS[current].en[0];
+      b.classList.add('filled');
+      answers[0] = WORDS[current].en[0];
+    } else {
+      b.textContent='';
+      b.classList.remove('filled','correct','wrong');
+      answers[i] = '';
+    }
+  });
   updateUsedMarks();
 });
 
 // 提交
 $('#btn-submit').addEventListener('click', ()=>{
-  const word = WORDS[current];
+  const word = WORDS[current].en;
   const filled = answers.every(Boolean);
   if(!filled){
     alert('還沒填完喔！');
@@ -341,7 +380,7 @@ $('#btn-submit').addEventListener('click', ()=>{
   vibrate(correct===word.length ? 35 : 20);
 
   // 凍結 2 秒
-  const freeze = $('#freeze'); const btnNext = $('#btn-next');
+  const freeze = $('#freeze'); const btnNext = $('#btn-next';
   btnNext.disabled = true; $('#freeze-msg').textContent = '請花 2 秒複習正確拼字';
   freeze.classList.add('show');
   setTimeout(()=>{
@@ -353,7 +392,7 @@ $('#btn-submit').addEventListener('click', ()=>{
 // 下一題
 $('#btn-next').addEventListener('click', ()=>{
   $('#freeze').classList.remove('show');
-  const word = WORDS[current];
+  const word = WORDS[current].en;
   if(answers.join('') === word) correctCount++;
   current++;
   if(current >= WORDS.length){

@@ -110,18 +110,20 @@
   <!-- 設定區：輸入 5-10 組單字 -->
   <section class="card setup" id="setup">
     <h2>輸入要練習的單字（5～10 組）</h2>
-    <p class="hint">每行一個單字，建議使用英文 A–Z（會自動轉大寫並移除空白與標點）。</p>
+    <p class="hint">每行一個單字，可用半形/全形英文，會自動轉大寫並正規化（只要含英文即可，重複也可）。</p>
     <textarea id="words" placeholder="例如：
 APPLE
-ORANGE
-BANANA
-CAT
+ＯＲＡＮＧＥ
+banana
+c@t!
 DOG
-PANDA"></textarea>
+ＰＡＮＤＡ"></textarea>
     <div class="controls">
       <button class="ghost" id="btn-sample">填入示範</button>
+      <span id="count-msg" style="margin-left:8px;color:#5562ff;font-weight:bold;"></span>
       <button class="primary" id="btn-start">開始遊戲</button>
     </div>
+    <div style="margin-top:8px;color:#e55;font-weight:bold;" id="invalid-lines"></div>
   </section>
 
   <!-- 遊戲區 -->
@@ -162,19 +164,59 @@ function vibrate(ms){ try{ if(navigator.vibrate) navigator.vibrate(ms);}catch(e)
 // ====== 狀態 ======
 let WORDS=[], current=0, answers=[], startTime=0, timerId=null, correctCount=0;
 
+// ====== 全形轉半形 + 正規化 ======
+function toFullWidthUpper(str) {
+  // 全形轉半形 + 只留 A-Z
+  // 先把全形字母轉半形，再過濾非英文字母，最後轉大寫
+  return str.replace(/[\uFF21-\uFF3A\uFF41-\uFF5A]/g, ch =>
+    String.fromCharCode(ch.charCodeAt(0) - 0xFEE0)
+  ).replace(/[^A-Za-z]/g, '')
+   .toUpperCase();
+}
+
+// ====== 表單即時檢查 ======
+function validateWordsInput() {
+  const lines = $('#words').value.split(/\r?\n/);
+  let valid = [];
+  let invalidIdxs = [];
+  lines.forEach((raw, i) => {
+    // 把全形轉半形、只取英文字母
+    const cleaned = toFullWidthUpper(raw);
+    if (/[A-Z]/.test(cleaned)) valid.push(cleaned);
+    else if(raw.trim()!=='') invalidIdxs.push(i+1); // 有內容但沒英文字母
+  });
+  $('#count-msg').textContent = `有效單字數：${valid.length}`;
+  if (valid.length < 5 || valid.length > 10) {
+    $('#count-msg').style.color = "#e55";
+  } else {
+    $('#count-msg').style.color = "#5562ff";
+  }
+  if (invalidIdxs.length > 0) {
+    $('#invalid-lines').textContent = `第 ${invalidIdxs.join(', ')} 行無有效英文字母`;
+  } else {
+    $('#invalid-lines').textContent = '';
+  }
+  // 回傳 valid array
+  return {valid, invalidIdxs};
+}
+$('#words').addEventListener('input', validateWordsInput);
+
 // ====== 設定／開始 ======
 $('#btn-sample').addEventListener('click', ()=>{
-  $('#words').value = ['APPLE','ORANGE','BANANA','PANDA','RABBIT','MONKEY','TIGER'].join('\\n');
+  $('#words').value = ['APPLE','ＯＲＡＮＧＥ','banana','c@t!','DOG','ＰＡＮＤＡ'].join('\n');
+  validateWordsInput();
 });
 $('#btn-start').addEventListener('click', ()=>{
-  const raw = $('#words').value.split(/\\r?\\n/).map(s=>s.trim().toUpperCase().replace(/[^A-Z]/g,''))
-               .filter(Boolean);
-  const uniq = Array.from(new Set(raw));
-  if(uniq.length < 5 || uniq.length > 10){
-    alert('請輸入 5～10 組有效單字（只含 A–Z）。');
+  const {valid, invalidIdxs} = validateWordsInput();
+  if(valid.length < 5 || valid.length > 10){
+    alert('請輸入 5～10 組有效單字（只含英文字母，大小寫/全形皆可，會自動正規化）。');
     return;
   }
-  WORDS = uniq;
+  if(invalidIdxs.length > 0){
+    alert('部份行無有效英文字母，請檢查：第 ' + invalidIdxs.join(', ') + ' 行');
+    return;
+  }
+  WORDS = valid;
   startGame();
 });
 
@@ -333,6 +375,9 @@ $('#btn-next').addEventListener('click', ()=>{
 $('#btn-restart').addEventListener('click', ()=>{
   startGame();
 });
+
+// 頁面載入時即時顯示一次
+validateWordsInput();
 </script>
 </body>
 </html>
